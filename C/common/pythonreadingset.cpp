@@ -113,7 +113,7 @@ PythonReadingSet::PythonReadingSet(PyObject *set)
 		{
 			PyObject *pyReading = PyList_GetItem(set, i);
 			PythonReading *reading = new PythonReading(pyReading);
-			setReadingAttr(reading, set, true);
+			setReadingAttr(reading, pyReading, true);
 			m_readings.push_back(reading);
 			m_count++;
 			m_last_id = reading->getId();

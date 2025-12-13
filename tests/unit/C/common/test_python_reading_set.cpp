@@ -12,6 +12,25 @@ namespace {
 const char *script = R"(
 def count(set):
     return len(set)
+
+
+def make_reading_list():
+    return [
+        {
+            'asset': 'sensor1',
+            'readings': {'temperature': 25.5},
+            'id': 123,
+            'ts': '1970-01-01 00:00:01.000000',
+            'user_ts': '1970-01-01 00:00:02.000000'
+        },
+        {
+            'asset': 'sensor2',
+            'readings': {'humidity': 60.0},
+            'id': 124,
+            'ts': '1970-01-01 00:00:03.000000',
+            'user_ts': '1970-01-01 00:00:04.000000'
+        }
+    ]
 )";
 
 class  PythonReadingSetTest : public testing::Test {
@@ -90,23 +109,32 @@ class  PythonReadingSetTest : public testing::Test {
 		Py_CLEAR(mod);
 	}
 
-	PyObject *callPythonFunc(const char *name, PyObject *arg)
-	{
-		PyObject *rval = NULL;
+        PyObject *callPythonFunc(const char *name, PyObject *arg)
+        {
+                PyObject *rval = NULL;
 
 		m_python->execute(script);
 		rval = m_python->call(name, "(O)", arg);
 		return rval;
 	}
 
-	PyObject *callPythonFunc2(const char *name, PyObject *arg1, PyObject *arg2)
-	{
-		PyObject *rval = NULL;
+        PyObject *callPythonFunc2(const char *name, PyObject *arg1, PyObject *arg2)
+        {
+                PyObject *rval = NULL;
 
 		m_python->execute(script);
-		rval = m_python->call(name, "OO", arg1, arg2);
-		return rval;
-	}
+                rval = m_python->call(name, "OO", arg1, arg2);
+                return rval;
+        }
+
+        PyObject *callPythonFuncNoArgs(const char *name)
+        {
+                PyObject *rval = NULL;
+
+                m_python->execute(script);
+                rval = m_python->call(name, "()");
+                return rval;
+        }
 
 };
 
@@ -128,7 +156,7 @@ TEST_F(PythonReadingSetTest, SingleReading)
 
 TEST_F(PythonReadingSetTest, MultipleReadings)
 {
-	vector<Reading *> *readings = new vector<Reading *>;
+        vector<Reading *> *readings = new vector<Reading *>;
 	long i = 1234;
 	DatapointValue value(i);
 	readings->push_back(new Reading("test", new Datapoint("long", value)));
@@ -139,8 +167,36 @@ TEST_F(PythonReadingSetTest, MultipleReadings)
 	PyGILState_STATE state = PyGILState_Ensure();
 	PyObject *pySet = ((PythonReadingSet *)(&set))->toPython();
 	PyObject *obj = callPythonFunc("count", pySet);
-	long rval = PyLong_AsLong(obj);
-	PyGILState_Release(state);
-	EXPECT_EQ(rval, 3);
+        long rval = PyLong_AsLong(obj);
+        PyGILState_Release(state);
+        EXPECT_EQ(rval, 3);
+}
+
+TEST_F(PythonReadingSetTest, ListPreservesMetadata)
+{
+        PyGILState_STATE state = PyGILState_Ensure();
+        PyObject *pyList = callPythonFuncNoArgs("make_reading_list");
+        ASSERT_NE(pyList, nullptr);
+        PythonReadingSet set(pyList);
+        Py_CLEAR(pyList);
+        PyGILState_Release(state);
+
+        const std::vector<Reading *>& readings = set.getAllReadings();
+        ASSERT_EQ(readings.size(), 2);
+
+        struct timeval ts = {0, 0};
+        struct timeval uts = {0, 0};
+
+        readings[0]->getTimestamp(&ts);
+        readings[0]->getUserTimestamp(&uts);
+        EXPECT_EQ(readings[0]->getId(), 123);
+        EXPECT_EQ(ts.tv_sec, 1);
+        EXPECT_EQ(uts.tv_sec, 2);
+
+        readings[1]->getTimestamp(&ts);
+        readings[1]->getUserTimestamp(&uts);
+        EXPECT_EQ(readings[1]->getId(), 124);
+        EXPECT_EQ(ts.tv_sec, 3);
+        EXPECT_EQ(uts.tv_sec, 4);
 }
 }
